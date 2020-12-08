@@ -11,7 +11,7 @@ command line interface for the hidden menu in the Speedport Smart 1st Gen
 * requests
 
 ## Usage
-`./speedport-hidden.py [OPTIONS]`
+`./speedport-smart-hidden.py [OPTIONS]`
 
 | option (short) | option (long)         | description                                                      |
 |----------------|-----------------------|------------------------------------------------------------------|
