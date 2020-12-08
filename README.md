@@ -3,7 +3,7 @@ command line interface for the hidden menu in the Speedport Smart 1st Gen
 
 - [REQUIREMENTS](#requirements)
 - [USAGE](#usage)
-- [CREDITS](#credit)
+- [CREDIT](#credit)
 
 ## Requirements
 * Python version 3.6 or newer
