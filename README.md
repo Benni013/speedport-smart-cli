@@ -1,9 +1,9 @@
 # speedport-smart-cli
 command line interface for the hidden menu in the Speedport Smart 1st Gen
 
-- [REQUIREMENTS](#requirements)
-- [USAGE](#usage)
-- [CREDIT](#credit)
+* [REQUIREMENTS](#requirements)
+* [USAGE](#usage)
+* [CREDIT](#credit)
 
 ## Requirements
 * Python version 3.6 or newer
