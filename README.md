@@ -1,12 +1,16 @@
 # speedport-smart-cli
-Command Line Interface for the hidden menu in the Speedport Smart 1st Gen
+command line interface for the hidden menu in the Speedport Smart 1st Gen
 
-### Requirements:
+- [REQUIREMENTS](#requirements)
+- [USAGE](#usage)
+- [CREDITS](#credit)
+
+## Requirements
 * Python version 3.6 or newer
-#### Python libraries:
+#### Python libraries
 * requests
 
-### Usage:
+## Usage
 `./speedport-hidden.py [OPTIONS]`
 
 | option (short) | option (long)         | description                                                      |
@@ -22,3 +26,6 @@ Command Line Interface for the hidden menu in the Speedport Smart 1st Gen
 |                |  `--dsl`              | print DSL information                                            |
 |                |  `--arp`              | print ARP table information                                      |
 |                |  `--all`              | print all information                                            |
+
+## Credit
+original [speedport CLI](https://github.com/tb1402/speedport_cli) by [Tobias Bittner](https://github.com/tb1402)
