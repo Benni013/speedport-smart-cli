@@ -1,11 +1,11 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 import argparse
 import getpass
 import hashlib
 import json
+import re
 import sys
 import time
-
 import requests
 
 
@@ -58,14 +58,13 @@ class colors:
         brightwhite = '\033[107m'
 
 
-url = 'http://192.168.2.1'
-headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:74.0) Gecko/20100101 Firefox/74.0',
+headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0',
            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
            'Accept-Language': 'en-GB,en;q=0.5',
            'Accept-Encoding': 'gzip, deflate',
            'DNT': '1',
            'Connection': 'close'}
-headersJson = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:74.0) Gecko/20100101 Firefox/74.0',
+headersJson = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0',
                'Accept': 'application/json, text/javascript, */*',
                'Accept-Language': 'en-GB,en;q=0.5',
                'Accept-Encoding': 'gzip, deflate',
@@ -73,15 +72,11 @@ headersJson = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:74.0) Gecko/201
                'X-Requested-With': 'XMLHttpRequest',
                'DNT': '1',
                'Connection': 'close'}
-purl = '127.0.0.1:8080'
-p = {'http': 'http://%s' % purl,
-     'https': 'https://%s' % purl,
-     'ftp': 'ftp://%s' % purl}
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Speedport Smart - Expert Mode Readout%s\nWarning: Every session logged into the router will be closed!%s' % (colors.fg.red, colors.reset), formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('-v', '--version', action='version', version='0.0.1 beta')
+    parser = argparse.ArgumentParser(description=f'Speedport Smart - Expert Mode Readout{colors.fg.red}\nWarning: Every session logged into the router will be closed!{colors.reset}', formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('-v', '--version', action='version', version='0.0.1')
     parser.add_argument('-u', '--url', default=['http://192.168.2.1'], help='set your Speedport URL', nargs=1)
     parser.add_argument('-d', '--dynamic', default=False, help='set dynamic mode (refreshes data at given time interval)', action='store_true')
     parser.add_argument('-r', '--refresh', default=['10'], help='set refresh rate in dynamic mode in seconds (default=10, min=4).', nargs=1)
@@ -92,28 +87,18 @@ def main():
     parser.add_argument('--arp', default=False, help='print ARP table information', action='store_true')
     parser.add_argument('--all', default=False, help='print all information', action='store_true')
     args = parser.parse_args()
-    global url
-    url = args.url[0]
-    password = getpass.getpass("Enter password: ")
-    if int(args.refresh[0]) >= 4:
+    if re.match(r'^http://\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}$', args.url[0]) is not None:
+        url = args.url[0]
+    else:
+        print(f'URL doesn\'t exist. Perhaps you meant http://{args.url[0]}?')
+        exit(1)
+    password = getpass.getpass('Enter password: ')
+    if args.refresh[0].isdigit() and int(args.refresh[0]) >= 4:
         refresh = int(args.refresh[0])
     else:
         refresh = 4
-    session = dict(SessionID_R3=login(password)[13:])
-    if args.memcpu:
-        printUtilizationInfo(session, args.dynamic, refresh)
-    elif args.dev:
-        printInterfaceInfo(session, args.dynamic, refresh)
-    elif args.wifi:
-        printWLANInfo(session, args.dynamic, refresh)
-    elif args.dsl:
-        printDSLInfo(session, args.dynamic, refresh)
-    elif args.arp:
-        printARPInfo(session, args.dynamic, refresh)
-    elif args.all:
-        printAll(session, args.dynamic, refresh)
-    else:
-        printVersionInfo(session)
+    session = dict(SessionID_R3=login(url, password)[13:])
+    out((args.memcpu, args.dev, args.wifi, args.dsl, args.arp), args.all, url, session, args.dynamic, refresh)
 
 
 def sha256(val):
@@ -122,20 +107,20 @@ def sha256(val):
     return m.hexdigest()
 
 
-def login(password):
+def login(url, password):
     lg = requests.get(url=url, headers=headers, verify=False, allow_redirects=True)
     chalpos = lg.text.find('challenge = \"')
     challengev = lg.text[chalpos:chalpos + 80].split('\"')[1]
-    hashvalue = sha256(('%s:%s' % (challengev, password)).encode())
+    hashvalue = sha256(f'{challengev}:{password}'.encode())
     data = {'csrf_token': 'nulltoken',
             'password': hashvalue,
             'showpw': '0',
             'challengev': challengev}
-    lp = requests.post(url='%s/data/Login.json' % url, headers=headersJson, data=data, verify=False, allow_redirects=True)
+    lp = requests.post(url=f'{url}/data/Login.json', headers=headersJson, data=data, verify=False, allow_redirects=True)
     try:
         return lp.headers['Set-Cookie']
     except KeyError:
-        print('%sError: wrong password%s' % (colors.fg.red, colors.reset))
+        print(f'{colors.fg.red}Error: wrong password{colors.reset}')
         exit(2)
 
 
@@ -145,13 +130,13 @@ def requestJson(urlTarget, cookie):
         jsonText = json.loads(uri.text)
         return jsonText
     except json.decoder.JSONDecodeError:
-        print('%sError: invalid JSON file%s' % (colors.fg.red, colors.reset))
+        print(f'{colors.fg.red}Error: invalid JSON file{colors.reset}')
         exit(1)
 
 
-def printUtilizationInfo(cookie, dynamic, refresh):
-    print('%s-- Memory/CPU utilization --%s' % (colors.fg.magenta, colors.reset))
-    js = requestJson('%s/engineer/data/memcpu.json' % url, cookie)
+def printUtilizationInfo(url, cookie):
+    print(f'{colors.fg.magenta}-- Memory/CPU utilization --{colors.reset}')
+    js = requestJson(f'{url}/engineer/data/memcpu.json', cookie)
     CPULoad = MainMem = usedVsFreeMainMem = FlashMem = usedVsFreeFlashMem = '--'
     for x in range(len(js)):
         varid = js[x]['varid']
@@ -165,25 +150,17 @@ def printUtilizationInfo(cookie, dynamic, refresh):
             usedVsFreeFlashMem = js[x]['varvalue']
         if varid == 'CPULoad':
             CPULoad = js[x]['varvalue']
-    print('%sCPU-Load:\t\t\t%s%s' % (colors.fg.green, CPULoad, colors.reset))
-    print('%sAvailable Main Memory:\t\t%s%s' % (colors.fg.green, MainMem, colors.reset))
-    print('%sUsed- vs. Free Main Memory:\t%s%s' % (colors.fg.green, usedVsFreeMainMem, colors.reset))
-    print('%sAvailable Flash Memory:\t\t%s%s' % (colors.fg.green, FlashMem, colors.reset))
-    print('%sUsed- vs. Free Flash Memory:\t%s%s' % (colors.fg.green, usedVsFreeFlashMem, colors.reset))
-    if dynamic:
-        try:
-            time.sleep(refresh)
-            sys.stdout.write('\x1B[1A\x1B[2K' * 6)
-            sys.stdout.flush()
-            printUtilizationInfo(cookie, dynamic, refresh)
-        except KeyboardInterrupt:
-            print(' Exiting...')
-            return
+    print(f'{colors.fg.green}CPU-Load:\t\t\t{CPULoad}{colors.reset}')
+    print(f'{colors.fg.green}Available Main Memory:\t\t{MainMem}{colors.reset}')
+    print(f'{colors.fg.green}Used- vs. Free Main Memory:\t{usedVsFreeMainMem}{colors.reset}')
+    print(f'{colors.fg.green}Available Flash Memory:\t\t{FlashMem}{colors.reset}')
+    print(f'{colors.fg.green}Used- vs. Free Flash Memory:\t{usedVsFreeFlashMem}{colors.reset}')
+    return 6
 
 
-def printInterfaceInfo(cookie, dynamic, refresh):
-    print('%s-- Link Layer --%s' % (colors.fg.magenta, colors.reset))
-    js = requestJson('%s/engineer/data/linklayer.json' % url, cookie)
+def printInterfaceInfo(url, cookie):
+    print(f'{colors.fg.magenta}-- Link Layer --{colors.reset}')
+    js = requestJson(f'{url}/engineer/data/linklayer.json', cookie)
     interfacename = macAddr = interfacestatus = mediaval = speed = '--'
     interface = []
     for x in range(2, len(js)):
@@ -200,21 +177,13 @@ def printInterfaceInfo(cookie, dynamic, refresh):
                 mediaval = interface[x - 2][y]['varvalue']
             if varid == 'speed':
                 speed = interface[x - 2][y]['varvalue']
-        print('%sInterface: %s\tMAC: %s\tInterface status: %s\tMedia: %s\tSpeed: %s%s' % (colors.fg.green, interfacename, macAddr, interfacestatus, mediaval, speed, colors.reset))
-    if dynamic:
-        try:
-            time.sleep(refresh)
-            sys.stdout.write('\x1B[1A\x1B[2K' * (len(interface) + 1))
-            sys.stdout.flush()
-            printInterfaceInfo(cookie, dynamic, refresh)
-        except KeyboardInterrupt:
-            print(' Exiting...')
-            return
+        print(f'{colors.fg.green}Interface: {interfacename}\tMAC: {macAddr}\tInterface status: {interfacestatus}\tMedia: {mediaval}\tSpeed: {speed}{colors.reset}')
+    return len(interface) + 1
 
 
-def printWLANInfo(cookie, dynamic, refresh):
-    print('%s-- Wi-Fi --%s' % (colors.fg.magenta, colors.reset))
-    js = requestJson('%s/engineer/data/wlan.json' % url, cookie)
+def printWLANInfo(url, cookie):
+    print(f'{colors.fg.magenta}-- Wi-Fi --{colors.reset}')
+    js = requestJson(f'{url}/engineer/data/wlan.json', cookie)
     bssid2G = ssid2G = channel2G = output_power2G = data_rate2G = '--'
     bssid5G = ssid5G = channel5G = output_power5G = data_rate5G = '--'
     macAddr = ipAddr = signal = hostname = '--'
@@ -246,9 +215,9 @@ def printWLANInfo(cookie, dynamic, refresh):
             client2G.append(js[x]['varvalue'])
         if varid == 'WLAN_client5G':
             client5G.append(js[x]['varvalue'])
-    print('%s-- Wi-Fi Information 2.4G --%s' % (colors.fg.magenta, colors.reset))
-    print('%sBSSID: %s\tSSID: %s\tChannel: %s\tOutput Power: %s\tDatarate: %s%s' % (colors.fg.green, bssid2G, ssid2G, channel2G, output_power2G, data_rate2G, colors.reset))
-    print('%s-- Wi-Fi clients 2.4G --%s' % (colors.fg.magenta, colors.reset))
+    print(f'{colors.fg.magenta}-- Wi-Fi Information 2.4G --{colors.reset}')
+    print(f'{colors.fg.green}BSSID: {bssid2G}\tSSID: {ssid2G}\tChannel: {channel2G}\tOutput Power: {output_power2G}\tDatarate: {data_rate2G}{colors.reset}')
+    print(f'{colors.fg.magenta}-- Wi-Fi clients 2.4G --{colors.reset}')
     for x in range(len(client2G)):
         for y in range(len(client2G[x])):
             varid = client2G[x][y]['varid']
@@ -260,10 +229,10 @@ def printWLANInfo(cookie, dynamic, refresh):
                 signal = client2G[x][y]['varvalue']
             if varid == 'hostname':
                 hostname = client2G[x][y]['varvalue']
-        print('%sMAC: %s\tIP: %s\tSignal: %s\tHostname: %s%s' % (colors.fg.green, macAddr, ipAddr, signal, hostname, colors.reset))
-    print('%s-- Wi-Fi Information 5G --%s' % (colors.fg.magenta, colors.reset))
-    print('%sBSSID: %s\tSSID: %s\tChannel: %s\tOutput Power: %s\tDatarate: %s%s' % (colors.fg.green, bssid5G, ssid5G, channel5G, output_power5G, data_rate5G, colors.reset))
-    print('%s-- Wi-Fi clients 5G --%s' % (colors.fg.magenta, colors.reset))
+        print(f'{colors.fg.green}MAC: {macAddr}\tIP: {ipAddr}\tSignal: {signal}\tHostname: {hostname}{colors.reset}')
+    print(f'{colors.fg.magenta}-- Wi-Fi Information 5G --{colors.reset}')
+    print(f'{colors.fg.green}BSSID: {bssid5G}\tSSID: {ssid5G}\tChannel: {channel5G}\tOutput Power: {output_power5G}\tDatarate: {data_rate5G}{colors.reset}')
+    print(f'{colors.fg.magenta}-- Wi-Fi clients 5G --{colors.reset}')
     for x in range(len(client5G)):
         for y in range(len(client5G[x])):
             varid = client5G[x][y]['varid']
@@ -275,21 +244,13 @@ def printWLANInfo(cookie, dynamic, refresh):
                 signal = client5G[x][y]['varvalue']
             if varid == 'hostname':
                 hostname = client5G[x][y]['varvalue']
-        print('%sMAC: %s\tIP: %s\tSignal: %s\tHostname: %s%s' % (colors.fg.green, macAddr, ipAddr, signal, hostname, colors.reset))
-    if dynamic:
-        try:
-            time.sleep(refresh)
-            sys.stdout.write('\x1B[1A\x1B[2K' * (7 + len(client2G) + len(client5G)))
-            sys.stdout.flush()
-            printWLANInfo(cookie, dynamic, refresh)
-        except KeyboardInterrupt:
-            print(' Exiting...')
-            return
+        print(f'{colors.fg.green}MAC: {macAddr}\tIP: {ipAddr}\tSignal: {signal}\tHostname: {hostname}{colors.reset}')
+    return len(client2G) + len(client5G) + 7
 
 
-def printDSLInfo(cookie, dynamic, refresh):
-    print('%s-- DSL --%s' % (colors.fg.magenta, colors.reset))
-    js = requestJson('%s/engineer/data/dsl.json' % url, cookie)
+def printDSLInfo(url, cookie):
+    print(f'{colors.fg.magenta}-- DSL --{colors.reset}')
+    js = requestJson(f'{url}/engineer/data/dsl.json', cookie)
     ActualDataUp = ActualDataDown = AttainDataUp = AttainDataDown = '--'
     for x in range(len(js)):
         varid = js[x]['varid']
@@ -301,22 +262,14 @@ def printDSLInfo(cookie, dynamic, refresh):
             ActualDataUp = js[x]['varvalue']
         if varid == 'ActualDataDown':
             ActualDataDown = js[x]['varvalue']
-    print('%sActual Data Rate\nUpstream:\t%s MiB/s\nDownstream:\t%s MiB/s%s' % (colors.fg.green, int(ActualDataUp) / 8192, int(ActualDataDown) / 8192, colors.reset))
-    print('%sAttainable Data Rate\nUpstream:\t%s MiB/s\nDownstream:\t%s MiB/s%s' % (colors.fg.green, int(AttainDataUp) / 8192, int(AttainDataDown) / 8192, colors.reset))
-    if dynamic:
-        try:
-            time.sleep(refresh)
-            sys.stdout.write('\x1B[1A\x1B[2K' * 7)
-            sys.stdout.flush()
-            printDSLInfo(cookie, dynamic, refresh)
-        except KeyboardInterrupt:
-            print(' Exiting...')
-            return
+    print(f'{colors.fg.green}Actual Data Rate\nUpstream:\t{int(ActualDataUp) / 8192} MiB/s\nDownstream:\t{int(ActualDataDown) / 8192} MiB/s{colors.reset}')
+    print(f'{colors.fg.green}Attainable Data Rate\nUpstream:\t{int(AttainDataUp) / 8192} MiB/s\nDownstream:\t{int(AttainDataDown) / 8192} MiB/s{colors.reset}')
+    return 7
 
 
-def printARPInfo(cookie, dynamic, refresh):
-    print('%s-- ARP Table --%s' % (colors.fg.magenta, colors.reset))
-    js = requestJson('%s/engineer/data/arp.json' % url, cookie)
+def printARPInfo(url, cookie):
+    print(f'{colors.fg.magenta}-- ARP Table --{colors.reset}')
+    js = requestJson(f'{url}/engineer/data/arp.json', cookie)
     macAddr = ipAddr = age = '--'
     grid = []
     for x in range(2, len(js)):
@@ -329,21 +282,13 @@ def printARPInfo(cookie, dynamic, refresh):
                 ipAddr = grid[x - 2][y]['varvalue']
             if varid == 'age':
                 age = grid[x - 2][y]['varvalue']
-        print('%sMAC: %s\tIP: %s\tAge: %s%s' % (colors.fg.green, macAddr, ipAddr, age, colors.reset))
-    if dynamic:
-        try:
-            time.sleep(refresh)
-            sys.stdout.write('\x1B[1A\x1B[2K' * (len(grid) + 1))
-            sys.stdout.flush()
-            printARPInfo(cookie, dynamic, refresh)
-        except KeyboardInterrupt:
-            print(' Exiting...')
-            return
+        print(f'{colors.fg.green}MAC: {macAddr}\tIP: {ipAddr}\tAge: {age}{colors.reset}')
+    return len(grid) + 1
 
 
-def printVersionInfo(cookie):
-    print('%s-- Module Versions --%s' % (colors.fg.magenta, colors.reset))
-    js = requestJson('%s/engineer/data/version.json' % url, cookie)
+def printVersionInfo(url, cookie):
+    print(f'{colors.fg.magenta}-- Module Versions --{colors.reset}')
+    js = requestJson(f'{url}/engineer/data/version.json', cookie)
     OpeSysType = OpeSysVer = OpeSysPaLev = WebUi = SoftwareVersion = WlanChipVer = '--'
     for x in range(len(js)):
         varid = js[x]['varid']
@@ -359,34 +304,48 @@ def printVersionInfo(cookie):
             SoftwareVersion = js[x]['varvalue']
         if varid == 'WlanChipVer':
             WlanChipVer = js[x]['varvalue']
-    print('%sOperating System Type:\t\t%s%s' % (colors.fg.green, OpeSysType, colors.reset))
-    print('%sOperating System Version:\t%s%s' % (colors.fg.green, OpeSysVer, colors.reset))
-    print('%sOperating System Patch Level:\t%s%s' % (colors.fg.green, OpeSysPaLev, colors.reset))
-    print('%sWeb-UI:\t\t\t%s%s' % (colors.fg.green, WebUi, colors.reset))
-    print('%sSoftware Version:\t%s%s' % (colors.fg.green, SoftwareVersion, colors.reset))
-    print('%sWiFi Chip Version:\t%s%s' % (colors.fg.green, WlanChipVer, colors.reset))
+    print(f'{colors.fg.green}Operating System Type:\t\t{OpeSysType}{colors.reset}')
+    print(f'{colors.fg.green}Operating System Version:\t{OpeSysVer}{colors.reset}')
+    print(f'{colors.fg.green}Operating System Patch Level:\t{OpeSysPaLev}{colors.reset}')
+    print(f'{colors.fg.green}Web-UI:\t\t\t{WebUi}{colors.reset}')
+    print(f'{colors.fg.green}Software Version:\t{SoftwareVersion}{colors.reset}')
+    print(f'{colors.fg.green}WiFi Chip Version:\t{WlanChipVer}{colors.reset}')
+    return 7
 
 
-def printAll(session, dynamic, refresh):
-    printVersionInfo(session)
-    printUtilizationInfo(session, False, refresh)
-    printInterfaceInfo(session, False, refresh)
-    printWLANInfo(session, False, refresh)
-    printDSLInfo(session, False, refresh)
-    printARPInfo(session, False, refresh)
-    if dynamic:
+# function to process the options
+def out(args, setall, url, session, dynamic, refresh):
+    line_count = 0
+    memcpu, dev, wifi, dsl, arp = args
+    if setall:
+        memcpu = dev = wifi = dsl = arp = True
+    if not any([memcpu, dev, wifi, dsl, arp]):
+        printVersionInfo(url, session)
+        exit()
+    if memcpu: line_count += printUtilizationInfo(url, session)
+    if dev: line_count += printInterfaceInfo(url, session)
+    if wifi: line_count += printWLANInfo(url, session)
+    if dsl: line_count += printDSLInfo(url, session)
+    if arp: line_count += printARPInfo(url, session)
+    while dynamic:
         try:
             time.sleep(refresh)
-            sys.stdout.write('\x1B[2J\x1B[H')
-            printAll(session, dynamic, refresh)
+            sys.stdout.write('\x1B[1A\x1B[2K' * line_count)
+            sys.stdout.flush()
+            line_count = 0
+            if memcpu: line_count += printUtilizationInfo(url, session)
+            if dev: line_count += printInterfaceInfo(url, session)
+            if wifi: line_count += printWLANInfo(url, session)
+            if dsl: line_count += printDSLInfo(url, session)
+            if arp: line_count += printARPInfo(url, session)
         except KeyboardInterrupt:
-            print(' Exiting...')
-            return
+            print('\nExiting...')
+            exit(0)
 
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print(' Exiting...')
+        print('\nInterrupt signal received')
         exit(130)
