@@ -1,5 +1,5 @@
 # speedport-smart-cli
-command line interface for the hidden menu in the Speedport Smart 1st Gen
+command-line interface for the hidden engineer menu in the Speedport Smart 1st Gen
 
 * [REQUIREMENTS](#requirements)
 * [USAGE](#usage)
@@ -11,7 +11,7 @@ command line interface for the hidden menu in the Speedport Smart 1st Gen
 * requests
 
 ## Usage
-`./speedport-smart-hidden.py [OPTIONS]`
+`./speedport-smart-hidden.py [-u URL] [-d] [-r REFRESH] [--memcpu] [--dev] [--wifi] [--dsl] [--arp] [--all] [-h] [-v]`
 
 | option (short) | option (long)         | description                                                      |
 |----------------|-----------------------|------------------------------------------------------------------|
